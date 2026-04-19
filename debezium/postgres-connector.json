@@ -1,0 +1,43 @@
+{
+  "name": "postgres-source-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+
+    "database.hostname": "${file:/kafka/config/connector.properties:database.hostname}",
+    "database.port": "5433",
+    "database.user": "${file:/kafka/config/connector.properties:database.user}",
+    "database.password": "${file:/kafka/config/connector.properties:database.password}",
+    "database.dbname": "source_db",
+    "database.server.name": "sourcedb",
+
+    "topic.prefix": "cdc",
+
+    "plugin.name": "pgoutput",
+    "publication.name": "dbz_publication",
+    "slot.name": "debezium_slot",
+
+    "heartbeat.interval.ms": "5000",
+    "snapshot.mode": "initial",
+
+    "table.include.list": "public.players,public.game_sessions,public.transactions,public.events",
+
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,table,lsn,source.ts_ms",
+
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+
+    "errors.tolerance": "all",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true",
+
+    "max.batch.size": "2048",
+    "max.queue.size": "16384",
+    "poll.interval.ms": "100"
+  }
+}
