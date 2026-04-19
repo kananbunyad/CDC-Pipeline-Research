@@ -24,8 +24,8 @@ Tested on Ubuntu 22.04 LTS and macOS 14 (Apple Silicon). At least **8 GB RAM** a
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/cdc-pipeline-research.git
-cd cdc-pipeline-research
+git clone https://github.com/kananbunyad/CDC-Pipeline-Research.git
+cd CDC-Pipeline-Research
 
 # 2. Copy environment template
 cp .env.example .env
@@ -118,20 +118,32 @@ python benchmarks/measure_api.py
 
 ## Expected Results
 
-The table below reproduces **Table 3** from the paper (CDC pipeline, 100 000-record workload, 10 repetitions).
+The table below reproduces **Table 2** from the paper (100,000-record workload, 10 repetitions).
 
-| Metric | CDC Pipeline | Batch ETL (1 min) | Batch ETL (5 min) |
-|--------|-------------|-------------------|-------------------|
-| Mean latency (ms) | **389** | 31 420 | 152 870 |
-| Std deviation (ms) | 47 | 8 210 | 41 300 |
-| p50 latency (ms) | 381 | 29 800 | 148 200 |
-| p95 latency (ms) | 463 | 57 300 | 289 500 |
-| p99 latency (ms) | 512 | 59 100 | 296 800 |
-| Throughput (rec/s) | **2 301** | 4 800 | 4 820 |
-| Data consistency (%) | **99.96** | 100.00 | 100.00 |
+### Latency (milliseconds)
 
+| Volume | CDC Mean | CDC P95 | CDC P99 | Batch-1min Mean | Batch-5min Mean |
+|--------|----------|---------|---------|-----------------|-----------------|
+| 1K     | 187      | 256     | 312     | 61,200          | 301,200         |
+| 5K     | 213      | 298     | 367     | 62,400          | 303,000         |
+| 10K    | 248      | 351     | 428     | 64,800          | 306,000         |
+| 50K    | 312      | 441     | 537     | 72,000          | 318,000         |
+| 100K   | **389**  | **548** | **672** | **84,000**      | **336,000**     |
+| 500K   | 523      | 738     | 891     | 126,000         | 420,000         |
+
+### Throughput (records/second)
+
+| Volume | CDC    | Batch ETL | Improvement |
+|--------|--------|-----------|-------------|
+| 1K     | 2,847  | 1,523     | 1.87x       |
+| 5K     | 2,712  | 1,487     | 1.82x       |
+| 10K    | 2,634  | 1,412     | 1.87x       |
+| 50K    | 2,489  | 1,289     | 1.93x       |
+| 100K   | **2,301** | **1,134** | **2.03x** |
+| 500K   | 1,876  | 847       | 2.21x       |
+
+> CDC achieves **215x** lower latency than Batch-1min and **864x** lower than Batch-5min at 100K records.
 > Hardware: DigitalOcean Droplet 8 vCPU / 16 GB RAM, Frankfurt region.
-> Actual numbers on different hardware will vary; relative ordering is stable.
 
 ---
 
@@ -140,18 +152,14 @@ The table below reproduces **Table 3** from the paper (CDC pipeline, 100 000-rec
 If you use this code or data in academic work, please cite:
 
 ```bibtex
-@article{bunyadov2025cdc,
-  title     = {Real-Time {CDC}-Based Data Pipeline for Cloud Databases:
-               Architecture, Implementation and Performance Evaluation
-               in E-Gaming {CRM} Systems},
-  author    = {Bunyadov, Kanan},
-  journal   = {Journal of Data Engineering},
-  year      = {2025},
-  volume    = {1},
-  number    = {1},
-  pages     = {1--20},
-  doi       = {10.xxxx/jde.2025.001},
-  url       = {https://github.com/your-org/cdc-pipeline-research}
+@misc{bunyadov2025cdc,
+  title  = {Real-Time {CDC}-Based Data Pipeline for Cloud Databases:
+             Architecture, Implementation and Performance Evaluation
+             in E-Gaming {CRM} Systems},
+  author = {Bunyadov, Kanan},
+  year   = {2025},
+  note   = {Manuscript under review},
+  url    = {https://github.com/kananbunyad/CDC-Pipeline-Research}
 }
 ```
 
