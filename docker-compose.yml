@@ -1,0 +1,228 @@
+version: "3.9"
+
+networks:
+  cdc-net:
+    driver: bridge
+
+services:
+
+  # ── Source PostgreSQL (WAL logical replication enabled) ───────────────────
+  postgres-source:
+    image: postgres:15
+    container_name: postgres-source
+    environment:
+      POSTGRES_DB: source_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SOURCE_DB_PASSWORD:-sourcepass}
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_source_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d source_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Target PostgreSQL (simulates DigitalOcean Managed PostgreSQL) ─────────
+  postgres-target:
+    image: postgres:15
+    container_name: postgres-target
+    environment:
+      POSTGRES_DB: target_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TARGET_DB_PASSWORD:-targetpass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_target_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d target_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Zookeeper ─────────────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Apache Kafka ──────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Debezium Kafka Connect (connectors pre-installed) ─────────────────────
+  kafka-connect:
+    image: debezium/connect:2.4
+    container_name: kafka-connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-source:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: debezium-connect-group
+      CONFIG_STORAGE_TOPIC: debezium_connect_configs
+      OFFSET_STORAGE_TOPIC: debezium_connect_offsets
+      STATUS_STORAGE_TOPIC: debezium_connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    ports:
+      - "8083:8083"
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Redis (API caching layer) ─────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Analytics Service ─────────────────────────────────────────────
+  fastapi:
+    build:
+      context: ./src/api
+      dockerfile: Dockerfile
+    container_name: fastapi
+    depends_on:
+      postgres-target:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TARGET_DB_HOST: postgres-target
+      TARGET_DB_PORT: 5432
+      TARGET_DB_NAME: target_db
+      TARGET_DB_USER: postgres
+      TARGET_DB_PASSWORD: ${TARGET_DB_PASSWORD:-targetpass}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    networks:
+      - cdc-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Apache Airflow (batch ETL baseline) ───────────────────────────────────
+  airflow:
+    image: apache/airflow:2.7.3
+    container_name: airflow
+    depends_on:
+      postgres-target:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:${TARGET_DB_PASSWORD:-targetpass}@postgres-target:5432/target_db
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      SOURCE_DB_HOST: postgres-source
+      SOURCE_DB_PORT: 5432
+      SOURCE_DB_NAME: source_db
+      SOURCE_DB_USER: postgres
+      SOURCE_DB_PASSWORD: ${SOURCE_DB_PASSWORD:-sourcepass}
+      TARGET_DB_HOST: postgres-target
+      TARGET_DB_PORT: 5432
+      TARGET_DB_NAME: target_db
+      TARGET_DB_USER: postgres
+      TARGET_DB_PASSWORD: ${TARGET_DB_PASSWORD:-targetpass}
+      FASTAPI_URL: http://fastapi:8000
+    volumes:
+      - ./src/airflow_dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "airflow db init &&
+               airflow users create --username admin --password admin
+                 --firstname Admin --lastname User --role Admin
+                 --email admin@example.com &&
+               airflow webserver & airflow scheduler"
+    networks:
+      - cdc-net
+
+volumes:
+  postgres_source_data:
+  postgres_target_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  redis_data:
+  airflow_logs:

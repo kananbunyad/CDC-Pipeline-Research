@@ -1,0 +1,37 @@
+# Database
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+sqlalchemy>=2.0.23
+
+# Kafka
+confluent-kafka>=2.3.0
+
+# API
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Redis
+redis>=5.0.1
+aioredis>=2.0.1
+
+# Data generation
+faker>=22.0.0
+numpy>=1.26.3
+pandas>=2.1.4
+
+# HTTP client
+requests>=2.31.0
+
+# Load testing
+locust>=2.20.0
+
+# Airflow
+# NOTE: Install apache-airflow with the constraints file for your Python version:
+#   pip install apache-airflow==2.7.3 \
+#       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.7.3/constraints-3.11.txt"
+apache-airflow==2.7.3
+
+# Utilities
+python-dotenv>=1.0.0
+pytest>=7.4.4
+pytest-asyncio>=0.23.3
