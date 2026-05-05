@@ -152,14 +152,17 @@ The table below reproduces **Table 2** from the paper (100,000-record workload, 
 If you use this code or data in academic work, please cite:
 
 ```bibtex
-@misc{bunyadov2025cdc,
-  title  = {Real-Time {CDC}-Based Data Pipeline for Cloud Databases:
-             Architecture, Implementation and Performance Evaluation
-             in E-Gaming {CRM} Systems},
-  author = {Bunyadov, Kanan},
-  year   = {2025},
-  note   = {Manuscript under review},
-  url    = {https://github.com/kananbunyad/CDC-Pipeline-Research}
+@article{bunyadov2026cdc,
+  title     = {Real-Time {CDC}-Based Data Pipeline for Cloud Databases:
+               Architecture, Implementation and Performance Evaluation
+               in E-Gaming {CRM} Systems},
+  author    = {Bunyadov, Kanan},
+  journal   = {International Journal of Innovative Research in Science,
+               Engineering and Management (IJSREM)},
+  year      = {2026},
+  month     = {May},
+  doi       = {10.55041/IJSREM62402},
+  url       = {https://doi.org/10.55041/IJSREM62402}
 }
 ```
 
